@@ -221,17 +221,9 @@ def discretize_features(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         DataFrame com features discretizadas adicionadas
     """
-    # Forma recente (pontos)
-    df['ht_form'] = pd.cut(
-        df['ht_form_points'],
-        bins=[-1, 3, 6, 9, 12, 15],
-        labels=['poor', 'below avg', 'average', 'good', 'excellent']
-    )
-    df['at_form'] = pd.cut(
-        df['at_form_points'],
-        bins=[-1, 3, 6, 9, 12, 15],
-        labels=['poor', 'below avg', 'average', 'good', 'excellent']
-    )
+    # Forma recente: soma de pontos conquistados nos últimos 5 jogos (inteiro, 0–15)
+    df['ht_form'] = df['ht_form_points'].astype(int)
+    df['at_form'] = df['at_form_points'].astype(int)
 
     # Capacidade ofensiva (golos marcados)
     df['ht_attack'] = pd.cut(
@@ -244,9 +236,6 @@ def discretize_features(df: pd.DataFrame) -> pd.DataFrame:
         bins=[-1, 3, 7, 10, 100],
         labels=['weak', 'average', 'above avg', 'strong']
     )
-
-    # Ataque conjunto
-    df['joint_attack'] = df['ht_attack'].astype(str) + " x " + df['at_attack'].astype(str)
 
     # Dominância head-to-head
     df['h2h_dominance'] = df.apply(
@@ -336,7 +325,7 @@ def temporal_split(df: pd.DataFrame, split_year: int = 2022) -> tuple:
 if __name__ == "__main__":
     # Exemplo de uso
     df = prepare_dataset(
-        input_path="../data/dataset.csv",
+        input_path="../dataset/dataset.csv",
         output_path="../data/dataset_processed.csv"
     )
 

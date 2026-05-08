@@ -1,7 +1,0 @@
-1. gráfico da evolução das taxas de resultado ao longo do tempo deve ter numeros inteiros na sua escala no x axis
-2. Porque a divisão do conjunto de treino e teste foi feita cronologicamente ao invés de aleatoriamente?
-3. Foi criado o conjunto de validação ou apenas o de teste e treino?
-4. A página 3 tem o título "Índice", mas está completamente vazia e deixaste várias referências no texto por compilar como os números das figuras.
-5. Será que dá para melhorar a organização/apresentação da informação do ponto 1.2 do relatório, recorrendo por exemplo a uma tabela ou outro recurso para apresentar a informação de melhor forma?
-6. O ponto 1.3. 1.5 e 6.2  do relatório ficam melhor se forem escrito por extenso.
-7. Eu como sou treinador de futebol gostaria de criar a minha knowledge base. Eu acho que o que influencia o resultado final de um jogo de futebol dentro dos atributos da base de dados é a forma recente das duas equipas pois normalmente as equipas como sao compostas por jogadores de futebol humanos que sao propícios a serem influenciados pela confiança e a cometerem erros, o sentimento e consequentemente a forma recente é muito importante para ditar a probabilidade de vencer uma partida e as odds porque sao produzidas de acordo com a confiança e previsão das multidões conjugada com a previsao dos modelos do bookmaker; a diferença de golos de cada equipa. 

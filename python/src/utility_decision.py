@@ -222,105 +222,83 @@ class UtilityAnalyzer:
 
         return results
 
-    def betting_simulation(self, edge_threshold=0.05, confidence_threshold=0.45, initial_bankroll=100.0) -> dict:
+    def betting_simulation(self, confidence_threshold=0.458, initial_bankroll=100.0) -> dict:
         """
-        Simula estratégia de apostas baseada em value betting.
+        Simula estratégia de apostas baseada no Princípio da Utilidade Máxima Esperada (MEU).
+
+        Condições para apostar:
+          1. Confiança do modelo >= confidence_threshold (limiar da Reject Option)
+          2. EU > 0 para pelo menos um resultado, i.e., p_modelo > 1/odd (EV positivo)
+
+        Aposta no resultado com maior EU positiva. Stake fixo de €1
+        (função de utilidade linear).
 
         Args:
-            edge_threshold: Aposta apenas quando modelo prevê prob > odds + edge
-            confidence_threshold: Confiança mínima para apostar
+            confidence_threshold: Limiar de confiança mínima (0.458, da análise Reject Option)
             initial_bankroll: Bankroll inicial (€)
 
         Returns:
             Dicionário com resultados da simulação
         """
         print("\n" + "="*70)
-        print("Betting Simulation (Value Betting)")
+        print("Betting Simulation (MEU — Maximum Expected Utility)")
         print("="*70)
 
         bankroll = initial_bankroll
         bankroll_history = [bankroll]
         bets_placed = 0
         bets_won = 0
+        stake = 1.0
 
-        # Confiança do modelo
         model_confidence = np.max(self.model_proba, axis=1)
-        model_pred_idx = np.argmax(self.model_proba, axis=1)
 
-        # Mapear índices
-        idx_to_class = {v: k for k, v in self.class_to_idx.items()}
+        idx_A = self.class_to_idx.get('A', 0)
+        idx_D = self.class_to_idx.get('D', 1)
+        idx_H = self.class_to_idx.get('H', 2)
+
+        argmax_pred = [
+            self.class_names[np.argmax(self.model_proba[i])]
+            for i in range(len(self.test_data))
+        ]
 
         for i in range(len(self.test_data)):
-            # Probabilidades do modelo
-            idx_A = self.class_to_idx.get('A', 0)
-            idx_D = self.class_to_idx.get('D', 1)
-            idx_H = self.class_to_idx.get('H', 2)
-
-            model_probs = {
-                'H': self.model_proba[i, idx_H],
-                'D': self.model_proba[i, idx_D],
-                'A': self.model_proba[i, idx_A]
-            }
-
-            # Probabilidades implícitas das odds
-            odds_probs = {
-                'H': self.odds_proba.iloc[i]['p_H'],
-                'D': self.odds_proba.iloc[i]['p_D'],
-                'A': self.odds_proba.iloc[i]['p_A']
-            }
-
-            # Odds
-            odds_values = {
-                'H': self.test_data.iloc[i]['h_odds'],
-                'D': self.test_data.iloc[i]['d_odds'],
-                'A': self.test_data.iloc[i]['a_odds']
-            }
-
-            # Resultado real
-            true_result = self.test_data.iloc[i]['result']
-
-            # Verificar confiança
+            # Condição 1: confiança mínima (da Reject Option)
             if model_confidence[i] < confidence_threshold:
                 bankroll_history.append(bankroll)
                 continue
 
-            # Encontrar melhor aposta (edge > threshold)
-            best_edge = 0
-            best_bet = None
+            pred = argmax_pred[i]
+            idx_pred = self.class_to_idx[pred]
+            p   = self.model_proba[i, idx_pred]
+            odd_key = {'H': 'h_odds', 'D': 'd_odds', 'A': 'a_odds'}[pred]
+            odd = self.test_data.iloc[i][odd_key]
 
-            for outcome in ['H', 'D', 'A']:
-                edge = model_probs[outcome] - odds_probs[outcome]
-                if edge > edge_threshold and edge > best_edge:
-                    best_edge = edge
-                    best_bet = outcome
+            # Condição 2: EU > 0 para o resultado previsto (p_modelo > 1/odd)
+            eu = p * (odd - 1) - (1 - p)
+            if eu <= 0:
+                bankroll_history.append(bankroll)
+                continue
 
-            # Se encontrou value, apostar
-            if best_bet is not None:
-                stake = 1.0  # Apostar €1 por jogo
+            bets_placed += 1
+            bankroll -= stake
+            true_result = self.test_data.iloc[i]['result']
 
-                if bankroll >= stake:
-                    bets_placed += 1
-                    bankroll -= stake
-
-                    if true_result == best_bet:
-                        # Ganhou
-                        payout = stake * odds_values[best_bet]
-                        bankroll += payout
-                        bets_won += 1
+            if true_result == pred:
+                bankroll += stake * odd
+                bets_won += 1
 
             bankroll_history.append(bankroll)
 
-        # Estatísticas
         final_pnl = bankroll - initial_bankroll
-        roi = (final_pnl / (bets_placed if bets_placed > 0 else 1)) * 100
+        roi = (final_pnl / bets_placed) * 100 if bets_placed > 0 else 0.0
 
         print(f"\nBankroll inicial: €{initial_bankroll:.2f}")
-        print(f"Bankroll final: €{bankroll:.2f}")
-        print(f"P&L: €{final_pnl:.2f}")
+        print(f"Bankroll final:   €{bankroll:.2f}")
+        print(f"P&L:              €{final_pnl:.2f}")
         print(f"\nApostas colocadas: {bets_placed}")
-        print(f"Apostas ganhas: {bets_won}")
-        print(f"Taxa de vitória: {100*bets_won/bets_placed if bets_placed > 0 else 0:.1f}%")
-        print(f"ROI: {roi:.2f}%")
+        print(f"Apostas ganhas:    {bets_won}")
+        print(f"Taxa de vitória:   {100*bets_won/bets_placed if bets_placed > 0 else 0:.1f}%")
+        print(f"ROI por aposta:    {roi:.2f}%")
 
         return {
             'initial_bankroll': initial_bankroll,
@@ -372,10 +350,9 @@ def run_utility_analysis(test_data: pd.DataFrame, model_proba_path: str, classes
     # 4. Estratégia de Reject Option
     reject_results = analyzer.reject_option_strategy()
 
-    # 5. Simulação de apostas
+    # 5. Simulação de apostas (MEU: EU > 0 + confiança >= 0.458)
     betting_results = analyzer.betting_simulation(
-        edge_threshold=0.15,
-        confidence_threshold=0.45,
+        confidence_threshold=0.458,
         initial_bankroll=100.0
     )
 
@@ -392,7 +369,7 @@ def run_utility_analysis(test_data: pd.DataFrame, model_proba_path: str, classes
 if __name__ == "__main__":
     from data_pipeline import load_dataset, temporal_split
 
-    df = load_dataset("../data/dataset.csv")
+    df = load_dataset("../dataset/dataset.csv")
     train, test = temporal_split(df, split_year=2022)
 
     results = run_utility_analysis(

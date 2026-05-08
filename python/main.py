@@ -115,7 +115,7 @@ def main():
                        help='Pular uma parte específica (0-3)')
     parser.add_argument('--only-part', type=int, choices=[0, 1, 2, 3],
                        help='Executar apenas uma parte específica (0-3)')
-    parser.add_argument('--dataset', type=str, default='data/dataset.csv',
+    parser.add_argument('--dataset', type=str, default='../dataset/dataset.csv',
                        help='Caminho para o dataset')
 
     args = parser.parse_args()

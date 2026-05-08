@@ -103,15 +103,6 @@
 
 \maketitle
 \thispagestyle{empty}
-\vspace{0.5cm}
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=0.55\textwidth]{../plots/p0_result_distribution.png}
-  \caption*{Distribuição dos resultados no conjunto de dados (vitória caseira, empate, vitória visitante)}
-\end{figure}
-
-\vspace{0.5cm}
 
 % ── Resumo ───────────────────────────────────────────────────────────────────
 \begin{abstract}
@@ -186,21 +177,26 @@ A \textbf{reprodutibilidade} é garantida pela natureza autodocumentada dos note
 \subsection{Estrutura de Ficheiros}
 
 \begin{verbatim}
-notebook/
-  - Part0_Data_Pipeline.ipynb
-  - Part1_Bayesian_Networks.ipynb
-  - Part2_Classification_Uncertainty.ipynb
-  - Part3_Utility_Decision.ipynb
-  - data/                    # Dados processados
+IAPproject/
+  - compilar_relatorios.sh     # Script de compilacao dos relatorios
+  - README.md
+  - dataset/                   # Dataset partilhado por ambas as versoes
       - dataset.csv
-      - requirements.txt
-  - plots/                   # Graficos gerados
-      - p0_*.png
-      - p1_*.png
-      - p2_*.png
-      - p3_*.png
-  - docs/                    # Este relatorio
-      - relatorio_notebook.tex
+  - notebook/
+      - Part0_Data_Pipeline.ipynb
+      - Part1_Bayesian_Networks.ipynb
+      - Part2_Classification_Uncertainty.ipynb
+      - Part3_Utility_Decision.ipynb
+      - data/                    # Dados processados
+          - requirements.txt
+      - plots/                   # Graficos gerados
+          - p0_*.png
+          - p1_*.png
+          - p2_*.png
+          - p3_*.png
+      - docs/                    # Este relatorio
+          - relatorio_notebook.tex
+          - relatorio_notebook.pdf
 \end{verbatim}
 
 % ═════════════════════════════════════════════════════════════════════════════
@@ -764,16 +760,29 @@ A Figura~\ref{fig:reject_option} mostra o \textit{trade-off} entre a taxa de abs
 
 \subsection{Simulação de Apostas}
 
-Foi simulada uma estratégia de apostas baseada na diferença entre as probabilidades do modelo e as probabilidades implícitas das \textit{odds}. Aposta-se apenas quando o modelo identifica \textit{value} (modelo prevê probabilidade superior à implícita nas \textit{odds}).
+A estratégia de apostas é fundamentada no \textbf{Princípio da Utilidade Máxima Esperada (MEU)}, que determina a decisão racional comparando a utilidade esperada de apostar com a de não apostar:
+
+\begin{equation}
+EU(\text{apostar em } X) = p_{\text{modelo}}(X) \cdot (\text{odd}_X - 1) - (1 - p_{\text{modelo}}(X)) \cdot 1
+\end{equation}
+
+A decisão de apostar obedece a \textbf{duas condições cumulativas}, ambas fundamentadas nas análises anteriores:
+
+\begin{enumerate}
+  \item \textbf{Confiança $\geq 0.458$} --- limiar determinado pela análise de \textit{Reject Option} (Secção~5.4) como o ponto a partir do qual a acurácia do modelo supera a do mercado. Abaixo deste valor a incerteza é demasiado elevada para tomar decisões fiáveis.
+  \item \textbf{$EU > 0$ para o resultado previsto} --- aposta-se apenas quando o resultado que o modelo considera mais provável ($\operatorname{argmax}$) tem valor esperado positivo, i.e., $p_{\text{modelo}} > 1/\text{odd}$. O modelo identifica uma vantagem real sobre o mercado nesse resultado concreto.
+\end{enumerate}
+
+O \textbf{stake é fixo em €1} por aposta, assumindo uma função de utilidade linear (utilidade marginal do dinheiro constante para stakes pequenos relativamente ao bankroll). Dos 1\,252 jogos de teste, 297 foram ignorados por confiança insuficiente e 455 por $EU \leq 0$, resultando em \textbf{500 apostas} (39.9\% dos jogos).
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=\textwidth]{../plots/p3_betting_simulation.png}
-  \caption{Simulação de apostas: evolução do bankroll ao longo do conjunto de teste.}
+  \caption{Simulação de apostas (MEU): evolução do P\&L cumulativo ao longo do conjunto de teste.}
   \label{fig:betting}
 \end{figure}
 
-A Figura \ref{fig:betting} mostra um desenrolar de simulador com um P\&L médio de €-0.07 por aposta. Sendo um resultado honesto, reflete a incapacidade momentânea para uma simples modelação individual do modelo superar as elevadas comissões eficientes (\textit{overround} de 6.79\%) sustentadas nos bastidores do mercado de apostas moderno, sendo improvável identificar valor substancial no modelo sem integração posterior de fontes externas em tempo muito mais agilizado do que janelas parciais para contrariar os robustos e complexos sistemas subjacentes das instituições das \textit{odds}.
+A Figura~\ref{fig:betting} mostra a evolução do P\&L ao longo das 500 apostas. A estratégia obteve uma acurácia de \textbf{53.8\%} nas apostas, com P\&L total de \textbf{+€0.83} e ROI de \textbf{+0.17\%} por aposta. Este resultado ligeiramente positivo mostra que uma estratégia fundamentada no MEU, com filtro de confiança derivado dos dados, consegue preservar o capital mesmo num mercado com \textit{overround} de 6.79\%. A vantagem é reduzida, o que é esperado: o modelo não incorpora informação privilegiada relativamente ao \textit{bookmaker}.
 
 \subsection{Comparação de Estratégias}
 
@@ -820,46 +829,15 @@ Este projeto desenvolveu um sistema completo de previsão probabilística para r
   \item \textbf{Teoria de Utilidade (Parte 3):} A \textit{Reject Option} permite aumentar a acurácia condicional acima dos 60\% ao filtrar os casos mais incertos, tornando o sistema mais robusto para aplicações práticas.
 \end{enumerate}
 
-\subsection{Limitações e Trabalho Futuro}
-
-\begin{itemize}
-  \item \textbf{Modelo de mercado:} O mercado de apostas (acurácia 0.580) continua a ser difícil de superar em cobertura total. Integrar \textit{features} mais ricas (lesões, condições meteorológicas, importância do jogo) poderia melhorar a performance.
-  \item \textbf{Empates:} Todos os modelos apresentam dificuldades em prever empates (classe D), refletindo a natureza imprevisível deste resultado.
-  \item \textbf{Redes Bayesianas dinâmicas:} A evolução da forma ao longo da época poderia ser capturada por DBNs (\textit{Dynamic Bayesian Networks}).
-  \item \textbf{Ensemble:} Combinar múltiplos classificadores (NB, Regressão Logística, Redes Bayesianas) poderia produzir estimativas de probabilidade mais robustas.
-\end{itemize}
-
 \subsection{Reflexão Final}
 
 A previsão de resultados desportivos é um problema de classificação multiclasse inerentemente incerto, que beneficia de uma abordagem probabilística rigorosa. As técnicas estudadas — desde redes Bayesianas até \textit{Conformal Prediction} — fornecem não apenas a previsão pontual, mas também garantias quantificadas sobre a incerteza, o que é fundamental para uma tomada de decisão responsável.
 
 % ═════════════════════════════════════════════════════════════════════════════
-\section*{Referências}
+\section*{Uso de Inteligência Artificial}
 % ═════════════════════════════════════════════════════════════════════════════
-\addcontentsline{toc}{section}{Referências}
+\addcontentsline{toc}{section}{Uso de Inteligência Artificial}
 
-\begin{enumerate}[label={[\arabic*]}]
-
-  \item Pearl, J. (1988). \textit{Probabilistic Reasoning in Intelligent Systems}. Morgan Kaufmann.
-
-  \item Koller, D., \& Friedman, N. (2009). \textit{Probabilistic Graphical Models: Principles and Techniques}. MIT Press.
-
-  \item Vovk, V., Gammerman, A., \& Shafer, G. (2005). \textit{Algorithmic Learning in a Random World}. Springer.
-
-  \item Angelopoulos, A. N., \& Bates, S. (2022). \textit{A Gentle Introduction to Conformal Prediction and Distribution-Free Uncertainty Quantification}. arXiv:2107.07511.
-
-  \item Scikit-learn Developers. (2024). \textit{Scikit-learn: Machine Learning in Python}. \url{https://scikit-learn.org}.
-
-  \item MAPIE Developers. (2024). \textit{MAPIE: Model Agnostic Prediction Interval Estimator}. \url{https://mapie.readthedocs.io}.
-
-  \item Niculescu-Mizil, A., \& Caruana, R. (2005). Predicting good probabilities with supervised learning. \textit{ICML 2005}.
-
-  \item Chickering, D. M. (2002). Optimal structure identification with greedy search. \textit{Journal of Machine Learning Research}, 3, 507--554.
-
-  \item Dixon, M. J., \& Coles, S. G. (1997). Modelling association football scores and inefficiencies in the football betting market. \textit{Journal of the Royal Statistical Society: Series C}, 46(2), 265--280.
-
-  \item Head, T., et al.\ (2021). \textit{scikit-optimize/scikit-optimize}. Zenodo. \url{https://doi.org/10.5281/zenodo.5565057}.
-
-\end{enumerate}
+No desenvolvimento deste projeto foram utilizados modelos de linguagem de grande escala (LLMs) como ferramenta de apoio à produtividade. O uso incidiu essencialmente na estruturação do código e correção de bugs. Esta abordagem permitiu concentrar o esforço intelectual nas decisões técnicas e conceptuais do projeto. Todo o conteúdo técnico, as análises e as conclusões apresentadas neste relatório são da responsabilidade do autor.
 
 \end{document}

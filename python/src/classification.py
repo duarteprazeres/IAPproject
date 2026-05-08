@@ -12,9 +12,10 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import LabelEncoder, OrdinalEncoder
 from sklearn.metrics import accuracy_score, classification_report, brier_score_loss, log_loss
 from sklearn.calibration import CalibratedClassifierCV
+from sklearn.model_selection import TimeSeriesSplit
 from skopt import BayesSearchCV
 from skopt.space import Real, Categorical
-from mapie.classification import MapieClassifier
+from mapie.classification import SplitConformalClassifier
 
 
 class ProbabilisticClassifier:
@@ -49,9 +50,8 @@ class ProbabilisticClassifier:
             'h2h_home_wins', 'h2h_draws', 'h2h_away_wins'
         ]
 
-        # Features categóricas
-        cat_features = ['ht_form', 'at_form', 'ht_attack', 'at_attack',
-                       'h2h_dominance', 'odds_favorite']
+        # Features categóricas (ht_form/at_form são agora inteiros em num_features)
+        cat_features = ['ht_attack', 'at_attack', 'h2h_dominance', 'odds_favorite']
 
         X_num = df[num_features].values
         X_cat_raw = df[cat_features].copy()
@@ -157,37 +157,34 @@ class ProbabilisticClassifier:
         print("Conformal Prediction")
         print("="*70)
 
-        # Base estimator
+        # Base estimator — treinado uma vez e reutilizado com prefit=True
         base_model = GaussianNB()
+        split_idx = int(0.8 * len(X_train))
+        X_train_fit, X_calib = X_train[:split_idx], X_train[split_idx:]
+        y_train_fit, y_calib = y_train[:split_idx], y_train[split_idx:]
+        base_model.fit(X_train_fit, y_train_fit)
+        classes_list = list(base_model.classes_)
 
         results = {}
 
         for alpha in alpha_levels:
-            print(f"\nConfiança: {1-alpha:.2f} (alpha={alpha})")
+            conf_level = 1 - alpha
+            print(f"\nConfiança: {conf_level:.2f} (alpha={alpha})")
 
-            # Mapie classifier
-            mapie_clf = MapieClassifier(estimator=base_model, cv="prefit", method="lac")
+            clf_cp = SplitConformalClassifier(
+                estimator=base_model, confidence_level=conf_level,
+                conformity_score='lac', prefit=True, random_state=42
+            )
+            clf_cp.conformalize(X_calib, y_calib)
 
-            # Split train into train/calibration
-            split_idx = int(0.8 * len(X_train))
-            X_train_fit, X_calib = X_train[:split_idx], X_train[split_idx:]
-            y_train_fit, y_calib = y_train[:split_idx], y_train[split_idx:]
+            y_pred, ps_result = clf_cp.predict_set(X_test)
+            ps = ps_result[:, :, 0]  # shape (n_samples, n_classes)
 
-            # Fit base model
-            base_model.fit(X_train_fit, y_train_fit)
-
-            # Fit MAPIE
-            mapie_clf.fit(X_calib, y_calib)
-
-            # Predict with prediction sets
-            y_pred, y_ps = mapie_clf.predict(X_test, alpha=alpha)
-
-            # Calculate coverage
-            coverage = np.mean([y_test[i] in y_ps[i] for i in range(len(y_test))])
-
-            # Average set size
-            set_sizes = [len(ps) for ps in y_ps]
-            avg_set_size = np.mean(set_sizes)
+            coverage = np.mean([
+                ps[i, classes_list.index(y_test[i])]
+                for i in range(len(y_test))
+            ])
+            avg_set_size = float(ps.sum(axis=1).mean())
 
             print(f"  Cobertura empírica: {coverage:.3f}")
             print(f"  Tamanho médio do conjunto: {avg_set_size:.2f}")
@@ -196,7 +193,7 @@ class ProbabilisticClassifier:
                 'coverage': coverage,
                 'avg_set_size': avg_set_size,
                 'predictions': y_pred,
-                'prediction_sets': y_ps
+                'prediction_sets': ps
             }
 
         return results
@@ -221,7 +218,7 @@ class ProbabilisticClassifier:
         print("Modelo calibrado com sucesso")
         return calibrated
 
-    def bayesian_optimization(self, X_train, y_train, n_iter=20):
+    def bayesian_optimization(self, X_train, y_train, n_iter=30):
         """
         Otimiza hiperparâmetros usando Bayesian Optimization.
 
@@ -240,15 +237,17 @@ class ProbabilisticClassifier:
         # Espaço de busca para Logistic Regression
         search_spaces = {
             'C': Real(0.001, 10.0, prior='log-uniform'),
-            'solver': Categorical(['lbfgs', 'liblinear', 'saga'])
+            'solver': Categorical(['lbfgs', 'saga'])
         }
+
+        tscv = TimeSeriesSplit(n_splits=5)
 
         # Configurar busca
         opt = BayesSearchCV(
             LogisticRegression(max_iter=1000, multi_class='multinomial'),
             search_spaces,
             n_iter=n_iter,
-            cv=3,
+            cv=tscv,
             scoring='neg_log_loss',
             n_jobs=-1,
             random_state=42
@@ -370,10 +369,10 @@ def run_classification_analysis(train_data: pd.DataFrame, test_data: pd.DataFram
     metrics_opt = classifier.evaluate(model_opt, X_test_all, y_test, "Optimized LR")
 
     # Salvar melhor modelo
-    np.save('../data/best_model_proba_test.npy', metrics_opt['probabilities'])
-    np.save('../data/best_model_classes.npy', classifier.label_encoder.classes_)
+    np.save('data/best_model_proba_test.npy', metrics_opt['probabilities'])
+    np.save('data/best_model_classes.npy', classifier.label_encoder.classes_)
 
-    print("\nProbabilidades do melhor modelo salvas em ../data/")
+    print("\nProbabilidades do melhor modelo salvas em data/")
 
     return {
         'classifier': classifier,
@@ -390,7 +389,7 @@ def run_classification_analysis(train_data: pd.DataFrame, test_data: pd.DataFram
 if __name__ == "__main__":
     from data_pipeline import load_dataset, temporal_split
 
-    df = load_dataset("../data/dataset.csv")
+    df = load_dataset("../dataset/dataset.csv")
     train, test = temporal_split(df, split_year=2022)
 
     results = run_classification_analysis(train, test)

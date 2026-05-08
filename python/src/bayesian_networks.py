@@ -367,7 +367,7 @@ if __name__ == "__main__":
     # Exemplo de uso
     from data_pipeline import load_dataset, temporal_split
 
-    df = load_dataset("../data/dataset.csv")
+    df = load_dataset("../dataset/dataset.csv")
     train, test = temporal_split(df, split_year=2022)
 
     results = run_bayesian_networks_analysis(train, test)
